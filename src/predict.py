@@ -161,10 +161,17 @@ def get_item_family(item_nbr: int) -> str:
     return "GROCERY I"  # Famille par défaut
 
 
-def get_realistic_lag_values(store_nbr: int, item_nbr: int, family: str = None, store_type: str = None) -> dict:
+def get_realistic_lag_values(store_nbr: int, item_nbr: int, family: str = None, store_type: str = None, onpromotion: int = 0) -> dict:
     """
     Calcule des valeurs de lag réalistes basées sur le type de magasin et la famille de produit.
     Utilise les données de référence si disponibles.
+    
+    Args:
+        store_nbr: Numéro du magasin
+        item_nbr: Numéro de l'article
+        family: Famille de produit (optionnel)
+        store_type: Type de magasin (optionnel)
+        onpromotion: 1 si en promotion, 0 sinon - ajuste les lags en conséquence
     """
     # Déterminer le type de magasin
     if store_type is None and REFERENCE_DATA:
@@ -189,6 +196,13 @@ def get_realistic_lag_values(store_nbr: int, item_nbr: int, family: str = None, 
     # Calculer les valeurs de lag réalistes
     base_sales = store_stats["base"] * family_mult
     std_sales = store_stats["std"] * family_mult
+    
+    # Si en promotion, ajuster les lags pour refléter des ventes historiques plus élevées
+    # Cela aide le modèle à prédire des ventes plus élevées pour les jours de promotion
+    if onpromotion == 1:
+        promo_boost = PROMO_BOOST_FACTORS.get(family, PROMO_BOOST_FACTORS["DEFAULT"])
+        base_sales = base_sales * promo_boost
+        std_sales = std_sales * promo_boost
     
     return {
         "sales_lag_7": base_sales,
@@ -219,10 +233,11 @@ def prepare_input_for_prediction(data: dict) -> pl.DataFrame:
     # Conversion en DataFrame Polars
     df = pl.DataFrame(data)
     
-    # Récupérer store_nbr et item_nbr pour calculer des lags réalistes
+    # Récupérer store_nbr, item_nbr et onpromotion pour calculer des lags réalistes
     store_nbr = int(data.get("store_nbr", 1))
     item_nbr = int(data.get("item_nbr", 96995))
-    lag_values = get_realistic_lag_values(store_nbr, item_nbr)
+    onpromotion = int(data.get("onpromotion", 0))
+    lag_values = get_realistic_lag_values(store_nbr, item_nbr, onpromotion=onpromotion)
     
     # Parsing de la date
     if "date" in df.columns:
